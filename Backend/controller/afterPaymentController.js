@@ -1,17 +1,31 @@
 import nodemailer from 'nodemailer';
 import PDFDocument from 'pdfkit';
 import Payment from '../schema/PaymentSchema.js';
+import { google } from 'googleapis';
 
-// Nodemailer transporter
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: process.env.EMAIL_PORT,
-  secure: false, // Use TLS
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+const oAuth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  process.env.GOOGLE_REDIRECT_URI
+);
+
+oAuth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+
+const createTransporter = async () => {
+  const accessToken = await oAuth2Client.getAccessToken();
+
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      type: 'OAuth2',
+      user: process.env.EMAIL_USER,
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
+      accessToken: accessToken.token,
+    },
+  });
+};
 
 // Get booking details
 const getBooking = async (req, res) => {
@@ -26,18 +40,16 @@ const getBooking = async (req, res) => {
   }
 };
 
-
-
 // Email receipt
-
-
 const sendEmailReceipt = async (req, res) => {
- try {
+  try {
     const payment = await Payment.findOne({ order_id: req.params.orderId });
     if (!payment) return res.status(404).json({ error: 'Payment not found' });
 
+    const transporter = await createTransporter();
+
     const mailOptions = {
-      from: process.env.EMAIL_USER,
+      from: `Modern Travellers Lanka <${process.env.EMAIL_USER}>`,
       to: payment.customer.email,
       subject: `Payment Confirmation - ${payment.order_id}`,
       html: `
@@ -56,10 +68,10 @@ const sendEmailReceipt = async (req, res) => {
     };
 
     await transporter.sendMail(mailOptions);
-    res.json({ success: true, message: 'Email sent' });
+    res.json({ success: true, message: 'Email sent via Gmail API' });
   } catch (err) {
-    console.error('Error sending email:', err);
-    res.status(500).json({ error: 'Failed to send email' });
+    console.error('Error sending Gmail receipt:', err);
+    res.status(500).json({ error: 'Failed to send email', details: err.message });
   }
 };
 
