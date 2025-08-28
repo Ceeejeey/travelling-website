@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
+import toast, { Toaster } from 'react-hot-toast';
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
@@ -11,8 +12,8 @@ const Success = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [csrfToken, setCsrfToken] = useState(null);
+  const [sendingEmail, setSendingEmail] = useState(false); // ✅ Email sending state
 
-  // Extract orderId from URL query
   const query = new URLSearchParams(location.search);
   const orderId = query.get('orderId');
 
@@ -52,20 +53,21 @@ const Success = () => {
   // Handle email receipt
   const handleEmailReceipt = async () => {
     try {
+      setSendingEmail(true); // change button text
       await axios.post(
         `${backendUrl}/api/after-payments/${orderId}/email-receipt`,
         {},
         {
           withCredentials: true,
-          headers: {
-            'X-CSRF-Token': csrfToken, // ✅ include CSRF token
-          },
+          headers: { 'X-CSRF-Token': csrfToken },
         }
       );
-      alert('Receipt sent to your email!');
+      toast.success('📧 Receipt sent to your email!');
     } catch (err) {
-      alert('Failed to send email receipt');
+      toast.error('❌ Failed to send email receipt');
       console.error('Email receipt error:', err);
+    } finally {
+      setSendingEmail(false); // reset button text
     }
   };
 
@@ -83,12 +85,12 @@ const Success = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
+      toast.success('📄 Receipt downloaded successfully!');
     } catch (err) {
-      alert('Failed to download receipt');
+      toast.error('❌ Failed to download receipt');
     }
   };
 
-  // Clear session/localStorage/cookies
   const clearSessionData = async () => {
     try {
       sessionStorage.clear();
@@ -97,7 +99,7 @@ const Success = () => {
       document.cookie = '_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=ceejeey.me; secure; SameSite=None';
 
       await axios.post(`${backendUrl}/api/logout`, {}, { withCredentials: true });
-      console.log('Session data, storage, and cookies cleared');
+      console.log('Session data cleared');
     } catch (err) {
       console.error('Error clearing session data:', err);
     }
@@ -116,60 +118,71 @@ const Success = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <p className="text-gray-600">Loading...</p>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-green-100">
+        <p className="text-lg text-emerald-700 animate-pulse">Fetching payment details...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <p className="text-red-600">{error}</p>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-rose-100">
+        <p className="text-red-600 font-medium">{error}</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <div className="bg-green-100 p-8 rounded-xl shadow-md shadow-green-800 border border-green-200 max-w-sm w-full space-y-6 animate-fade-in">
+    <div className="min-h-screen flex items-start justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-green-100 p-6 pt-30">
+      <Toaster position="top-right" />
+      <div className="bg-white/90 backdrop-blur-xl p-10 rounded-2xl shadow-2xl border border-green-200 max-w-lg w-full space-y-8 animate-fade-in">
+        {/* Success Icon */}
         <div className="flex justify-center">
-          <svg className="w-16 h-16 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-          </svg>
+          <div className="bg-emerald-100 p-4 rounded-full">
+            <svg className="w-16 h-16 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
         </div>
-        <h1 className="text-xl font-semibold text-gray-800 text-center">
-          Payment Successful
+
+        {/* Success Text */}
+        <h1 className="text-3xl font-bold text-center text-emerald-700">
+          Payment Successful 🎉
         </h1>
-        <p className="text-sm text-gray-600 text-center">
-          Your payment for {payment?.customer.tripName} is confirmed!
+        <p className="text-center text-gray-600">
+          Thank you for booking your Sri Lankan adventure with us 🌴🐘 <br />
+          Your payment for <span className="font-semibold text-emerald-700">{payment?.customer.tripName}</span> is confirmed!
         </p>
-        <div className="text-sm text-gray-600 space-y-2">
+
+        {/* Payment Details Card */}
+        <div className="bg-emerald-50 rounded-xl p-6 shadow-inner text-gray-700 space-y-2">
           <p><strong>Order ID:</strong> {payment?.order_id}</p>
           <p><strong>Payment Type:</strong> {payment?.paymentType}</p>
           <p><strong>Amount:</strong> {payment?.currency} {payment?.amount}</p>
           <p><strong>Email:</strong> {payment?.customer.email}</p>
           <p><strong>Name:</strong> {payment?.customer.first_name} {payment?.customer.last_name}</p>
         </div>
+
+        {/* Buttons */}
         <div className="flex flex-col space-y-4">
           <button
             onClick={handleEmailReceipt}
-            disabled={!csrfToken} // prevent sending without CSRF
-            className="bg-green-500 text-white px-6 py-2 rounded-full hover:bg-green-600 transition text-sm font-medium disabled:opacity-50"
+            disabled={!csrfToken || sendingEmail}
+            className="bg-emerald-600 text-white px-6 py-3 rounded-full font-semibold shadow hover:bg-emerald-700 transition disabled:opacity-50 cursor-pointer"
           >
-            Email Receipt
+            {sendingEmail ? "Sending..." : "📧 Email Receipt"}
           </button>
           <button
             onClick={handleDownloadReceipt}
-            className="bg-green-500 text-white px-6 py-2 rounded-full hover:bg-green-600 transition text-sm font-medium"
+            className="bg-teal-600 text-white px-6 py-3 rounded-full font-semibold shadow hover:bg-teal-700 transition cursor-pointer"
           >
-            Download Receipt
+            📄 Download Receipt
           </button>
           <button
             onClick={handleReturnToHome}
-            className="bg-green-500 text-white px-6 py-2 rounded-full hover:bg-green-600 transition text-sm font-medium"
+            className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-6 py-3 rounded-full font-semibold shadow hover:from-emerald-700 hover:to-teal-700 transition cursor-pointer"
           >
-            Return to Home
+            🏡 Return to Home
           </button>
         </div>
       </div>
