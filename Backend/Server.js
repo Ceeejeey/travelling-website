@@ -28,12 +28,14 @@ sessionStore.on('error', (error) => console.error('MongoStore error:', error));
 sessionStore.on('connected', () => console.log('MongoStore connected to MongoDB'));
 
 // -------------------- GLOBAL MIDDLEWARE --------------------
-app.use(cors({
-  origin: ['http://localhost:5173', 'https://ceejeey.me'],
-  credentials: true,
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'X-CSRF-Token'],
-}));
+app.use(
+  cors({
+    origin: ['http://localhost:5173', 'https://ceejeey.me'],
+    credentials: true,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'X-CSRF-Token'],
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -41,43 +43,62 @@ app.use(express.urlencoded({ extended: true }));
 const paymentApp = express();
 
 // Session first
-paymentApp.use(session({
-  name: 'session',
-  secret: process.env.SESSION_SECRET || 'your-secret',
-  resave: false,
-  saveUninitialized: true,
-  store: sessionStore,
-  cookie: {
-    domain: process.env.NODE_ENV === 'production' ? 'ceejeey.me' : undefined,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 24 * 60 * 60 * 1000, // 1 day
-    httpOnly: true,
-    path: '/',
-  },
-}));
+paymentApp.use(
+  session({
+    name: 'session',
+    secret: process.env.SESSION_SECRET || 'your-secret',
+    resave: false,
+    saveUninitialized: true,
+    store: sessionStore,
+    cookie: {
+      domain: process.env.NODE_ENV === 'production' ? 'ceejeey.me' : undefined,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+      httpOnly: true,
+      path: '/',
+    },
+  })
+);
 
 // Debug logger
 paymentApp.use((req, res, next) => {
-  console.log('Incoming request:', req.path, 'Cookies:', req.headers.cookie, 'Session ID:', req.sessionID);
+  console.log(
+    'Incoming request:',
+    req.path,
+    'Cookies:',
+    req.headers.cookie,
+    'Session ID:',
+    req.sessionID
+  );
   next();
 });
 
-// Conditional CSRF
+// -------------------- CONDITIONAL CSRF --------------------
 const csrfProtection = csrf({ cookie: false });
+
 paymentApp.use((req, res, next) => {
-  // Skip CSRF for cleanup endpoints
-  if (req.path === '/clear-order' || req.path === '/logout') {
+  // ✅ Skip CSRF for PayHere notify + cleanup endpoints
+  if (
+    req.path === '/notify/payhere' ||
+    req.path === '/clear-order' ||
+    req.path === '/logout'
+  ) {
     return next();
   }
   return csrfProtection(req, res, next);
 });
 
-// Ensure CSRF token in session
+// Ensure CSRF token in session (only when csrfProtection ran)
 paymentApp.use((req, res, next) => {
   if (!req.session) {
     console.error('No session found for request:', req.path);
     return res.status(500).json({ error: 'Session not initialized' });
+  }
+
+  // If csrfProtection didn't run, req.csrfToken won't exist → skip
+  if (typeof req.csrfToken !== 'function') {
+    return next();
   }
 
   if (!req.session.csrfToken) {
@@ -88,12 +109,26 @@ paymentApp.use((req, res, next) => {
       path: '/',
       httpOnly: true,
     });
-    console.log('Generated new CSRF token:', req.session.csrfToken, 'Session ID:', req.sessionID);
+    console.log(
+      'Generated new CSRF token:',
+      req.session.csrfToken,
+      'Session ID:',
+      req.sessionID
+    );
   } else {
-    console.log('Reusing CSRF token:', req.session.csrfToken, 'Session ID:', req.sessionID);
+    console.log(
+      'Reusing CSRF token:',
+      req.session.csrfToken,
+      'Session ID:',
+      req.sessionID
+    );
   }
 
-  if (['POST', 'PUT', 'DELETE'].includes(req.method) && req.path !== '/clear-order' && req.path !== '/logout') {
+  // Log validation only for protected routes
+  if (
+    ['POST', 'PUT', 'DELETE'].includes(req.method) &&
+    !['/clear-order', '/logout', '/notify/payhere'].includes(req.path)
+  ) {
     const clientToken = req.headers['x-csrf-token'] || req.body._csrf;
     console.log('Validating CSRF token:', {
       clientToken,
@@ -136,7 +171,7 @@ paymentApp.post('/logout', (req, res) => {
   });
 });
 
-// Mount other payment routes
+// ✅ Mount PayHere + after-payment routes
 paymentApp.use(paymentRoutes);
 paymentApp.use(afterPaymenRoutes);
 
@@ -151,7 +186,7 @@ app.use('/api/admin', loginrouter);
 app.use('/api/gallery', gallryRouter);
 
 // -------------------- ROOT --------------------
-app.get('/', (req, res) => res.send("API working"));
+app.get('/', (req, res) => res.send('API working'));
 
 // -------------------- START --------------------
-app.listen(port, () => console.log("Server starting on port " + port));
+app.listen(port, () => console.log('Server starting on port ' + port));
