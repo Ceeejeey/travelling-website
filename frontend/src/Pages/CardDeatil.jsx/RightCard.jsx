@@ -277,7 +277,7 @@ const RightCard = ({ item }) => {
       merchant_id: import.meta.env.VITE_PAYHERE_MERCHANT_ID,
       return_url: `${window.location.origin}/success`,
       cancel_url: `${window.location.origin}/custompage`,
-      notify_url: `https://376c6260f905.ngrok-free.app/api/payments/notify/payhere`,
+      notify_url: `https://cb191dd1894a.ngrok-free.app/api/payments/notify/payhere`,
       order_id: `ORDER_${Date.now()}`,
       items: item.name || item.duration,
       amount: item.price.toFixed(2),
